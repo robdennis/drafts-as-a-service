@@ -138,6 +138,20 @@ class TestDraftSetup(object):
 
 class TestDraftPicks(object):
     @pytest.fixture
+    def pass_right_pack_order(self):
+        """
+        if you're in seat 0, your first pass pack is from seat 1
+        """
+        return [0, 1, 2, 3, 4, 5, 6, 7]
+
+    @pytest.fixture
+    def pass_left_pack_order(self):
+        """
+        if you're in seat 0, your first pass pack is from seat 7
+        """
+        return [0, 7, 6, 5, 4, 3, 2, 1]
+
+    @pytest.fixture
     def started_draft(self, the_draft):
         the_draft.distribute()
         [the_draft.open_pack(player) for player in the_draft.players]
@@ -183,7 +197,9 @@ class TestDraftPicks(object):
         assert player1_on_deck[0] == packs[1]
         assert player1_on_deck[1] == packs[0][1:] == player0_picks[0]['passed']
 
-    def test_wheel_left(self, started_draft, players, player0_queues, packs):
+    def test_wheel_left(self, started_draft, players, player0,
+                        player0_queues, player0_picks, packs,
+                        pass_left_pack_order, pass_right_pack_order):
 
         def make_first_picks(player):
             """
@@ -193,9 +209,9 @@ class TestDraftPicks(object):
             for _ in xrange(len(on_deck)):
                 started_draft.make_pick_and_pass_left(player, on_deck[0][0])
 
-        # [0, 1, 2, 3, 4, 5, 6, 7]
-        for player in players:
-            make_first_picks(player)
+        # "reverse" order we all the packs are now waiting for you
+        for seat in pass_right_pack_order:
+            make_first_picks(players[seat])
 
         assert len(player0_queues['opened']) == 8
         next_pack = player0_queues['opened'][0]
@@ -206,7 +222,20 @@ class TestDraftPicks(object):
         assert next_pack == packs[7][1:]
         assert opened_pack == packs[0][8:]
 
-    def test_wheel_right(self, started_draft, players, player0_queues, packs):
+        make_first_picks(player0)
+        pack_order = pass_left_pack_order + [0]
+
+        assert [p['drafted'] for p in player0_picks] == [
+            packs[p][idx] for idx, p in enumerate(pack_order)
+        ]
+
+        assert [len(p['passed']) for p in player0_picks] == [
+            15 - pack - 1 for pack in xrange(9)
+        ]
+
+    def test_wheel_right(self, started_draft, players, player0,
+                        player0_queues, player0_picks, packs,
+                        pass_left_pack_order, pass_right_pack_order):
 
         def make_first_picks(player):
             """
@@ -216,9 +245,9 @@ class TestDraftPicks(object):
             for _ in xrange(len(on_deck)):
                 started_draft.make_pick_and_pass_right(player, on_deck[0][0])
 
-        # [0, 7, 6, 5, 4, 3, 2, 1]
-        for player in [players[0]] + players[:0:-1]:
-            make_first_picks(player)
+        # "reverse" order we all the packs are now waiting for you
+        for seat in pass_left_pack_order:
+            make_first_picks(players[seat])
 
         assert len(player0_queues['opened']) == 8
         next_pack = player0_queues['opened'][0]
@@ -228,3 +257,14 @@ class TestDraftPicks(object):
         # guarantee these
         assert next_pack == packs[1][1:]
         assert opened_pack == packs[0][8:]
+
+        make_first_picks(player0)
+        pack_order = pass_right_pack_order + [0]
+
+        assert [p['drafted'] for p in player0_picks] == [
+            packs[p][idx] for idx, p in enumerate(pack_order)
+        ]
+
+        assert [len(p['passed']) for p in player0_picks] == [
+            15 - pack - 1 for pack in xrange(9)
+        ]
