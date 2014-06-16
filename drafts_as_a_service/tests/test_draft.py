@@ -28,6 +28,11 @@ def players(player_count):
 
 
 @pytest.fixture
+def player0(players):
+    return players[0]
+
+
+@pytest.fixture
 def pool(cards):
     return draft.Pool(cards)
 
@@ -35,7 +40,7 @@ def pool(cards):
 @pytest.fixture
 def mocked_pool(pool, packs, monkeypatch):
     def return_expected_packs(*args, **kwargs):
-        return copy.copy(packs)
+        return copy.deepcopy(packs)
     monkeypatch.setattr(pool, 'deal_packs', return_expected_packs)
     return pool
 
@@ -96,15 +101,18 @@ class TestPod(object):
                    for p,q in pod.player_queues.iteritems())
 
 
-class TestDraft(object):
+class TestDraftSetup(object):
     def test_sanity(self, the_draft, packs):
         # we mocked this out to always deal the same packs
         assert the_draft.pool.deal_packs() == packs
         assert the_draft.pool.deal_packs(123, 'asdf') == packs
 
     def test_distribute(self, the_draft, packs):
+        assert the_draft.player_queues == {
+            '@player{}'.format(idx): dict(opened=[], unopened=[])
+            for idx in xrange(8)
+        }
         the_draft.distribute()
-
         # this works thanks to the mocking we've set out
         expected = {
             '@player{}'.format(idx): {
@@ -115,5 +123,108 @@ class TestDraft(object):
             }
             for idx in xrange(8)
         }
+        assert the_draft.player_queues == expected
 
-        assert the_draft.pod.player_queues == expected
+    def test_open(self, the_draft):
+        the_draft.distribute()
+        assert all(len(queue['opened']) == 0 and len(queue['unopened']) == 3
+                   for queue in the_draft.player_queues.itervalues())
+
+        [the_draft.open_pack(player) for player in the_draft.players]
+
+        assert all(len(queue['opened']) == 1 and len(queue['unopened']) == 2
+                   for queue in the_draft.player_queues.itervalues())
+
+
+class TestDraftPicks(object):
+    @pytest.fixture
+    def started_draft(self, the_draft):
+        the_draft.distribute()
+        [the_draft.open_pack(player) for player in the_draft.players]
+        return the_draft
+
+    @pytest.fixture
+    def player0_picks(self, the_draft, player0):
+        return the_draft.player_picks[player0]
+
+    @pytest.fixture
+    def player0_queues(self, the_draft, player0):
+        return the_draft.player_queues[player0]
+
+    @pytest.fixture
+    def some_pick(self, player0_queues, packs):
+        # we know this based on the mocking and the pack distribution
+        # we asserted earlier
+        assert player0_queues['opened'][0] == packs[0]
+        assert player0_queues['opened'][0][0] == 'Card 0'
+        return 'Card 0'
+
+    def test_make_pick_and_pass(self, started_draft, player0, player0_picks,
+                                player0_queues, some_pick, packs):
+
+        assert len(player0_queues['opened']) == 1
+        assert len(player0_picks) == 0
+
+        started_draft.make_pick(player0, some_pick)
+        # we haven't passed yet
+        assert len(player0_queues['opened']) == 1
+        assert len(player0_picks) == 1
+        assert player0_picks[0] == {
+            'drafted': some_pick,
+            'passed': packs[0][1:]
+        }
+
+        player1_on_deck = started_draft.player_queues['@player1']['opened']
+        # we're passing to this person in pack 1
+        assert len(player1_on_deck) == 1
+        started_draft.pass_left(player0)
+        assert len(player0_queues['opened']) == 0
+        assert len(player1_on_deck) == 2
+        assert player1_on_deck[0] == packs[1]
+        assert player1_on_deck[1] == packs[0][1:] == player0_picks[0]['passed']
+
+    def test_wheel_left(self, started_draft, players, player0_queues, packs):
+
+        def make_first_picks(player):
+            """
+            make the first pick for each pack the player has queued
+            """
+            on_deck = started_draft.player_queues[player]['opened']
+            for _ in xrange(len(on_deck)):
+                started_draft.make_pick_and_pass_left(player, on_deck[0][0])
+
+        # [0, 1, 2, 3, 4, 5, 6, 7]
+        for player in players:
+            make_first_picks(player)
+
+        assert len(player0_queues['opened']) == 8
+        next_pack = player0_queues['opened'][0]
+        opened_pack = player0_queues['opened'][-1]
+        # since everyone took the first pack we can assert this
+        # and we are dealing out packs in a pattern, we can
+        # guarantee these
+        assert next_pack == packs[7][1:]
+        assert opened_pack == packs[0][8:]
+
+    def test_wheel_right(self, started_draft, players, player0_queues, packs):
+
+        def make_first_picks(player):
+            """
+            make the first pick for each pack the player has queued
+            """
+            on_deck = started_draft.player_queues[player]['opened']
+            for _ in xrange(len(on_deck)):
+                started_draft.make_pick_and_pass_right(player, on_deck[0][0])
+
+        # [0, 7, 6, 5, 4, 3, 2, 1]
+        for player in [players[0]] + players[:0:-1]:
+            make_first_picks(player)
+
+        assert len(player0_queues['opened']) == 8
+        next_pack = player0_queues['opened'][0]
+        opened_pack = player0_queues['opened'][-1]
+        # since everyone took the first pack we can assert this
+        # and we are dealing out packs in a pattern, we can
+        # guarantee these
+        assert next_pack == packs[1][1:]
+        assert opened_pack == packs[0][8:]
