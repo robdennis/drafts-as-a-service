@@ -1,0 +1,31 @@
+{
+    "text": "@DraftAsAService @EliCourtwright #StartBoosterDrafting",
+    "id": 478706761516736512,
+    "entities": {
+        "symbols": [],
+        "user_mentions": [
+            {
+                "id": 2562452438,
+                "screen_name": "DraftAsAService"
+            },
+            {
+                "id": 2411236057,
+                "screen_name": "EliCourtwright"
+            }
+        ],
+        "hashtags": [
+            {
+                "text": "StartBoosterDrafting"
+            }
+        ],
+        "urls": []
+    },
+    "user": {
+        "id": 265172664,
+        "following": false,
+        "screen_name": "cuesbey",
+        "protected": false
+    },
+    "geo": null,
+    "in_reply_to_user_id": 2562452438
+}
