@@ -26,7 +26,7 @@ def mocked_client():
     return mock.Mock()
 
 @pytest.fixture
-def bot(request, mocked_client):
+def bot(request, mocked_client, mocked_pool):
     """
     An initialized draft bot with a mocked client
     """

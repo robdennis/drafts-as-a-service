@@ -10,9 +10,10 @@ def test_sanity(bot, mocked_client):
     assert bot.client is mocked_client
 
 
-@mock.patch('drafts_as_a_service.draft.Draft')
 @mock.patch('drafts_as_a_service.draft.Pod')
-def test_new_draft_created_from_message(mock_pod, bot, start_message):
+def test_new_draft_created_from_message(mock_pod, bot, start_message,
+                                        mocked_pool):
     bot.process(start_message)
     mock_pod.assert_called_once_with({'cuesbey', 'EliCourtwright'})
+
 
