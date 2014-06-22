@@ -2,7 +2,6 @@
 from __future__ import unicode_literals
 import twython
 
-from drafts_as_a_service import draft
 
 class DraftBot(object):
     start_draft_hashtag = 'StartBoosterDrafting'
@@ -26,8 +25,8 @@ class DraftBot(object):
             self._process_start_message(message)
 
     def _process_start_message(self, message):
-
-        pod = draft.Pod(message.involved - {self.screen_name})
+        pass
+        # pod = draft.Pod(message.involved - {self.screen_name})
 
 
 class Message(dict):
