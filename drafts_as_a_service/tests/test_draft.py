@@ -4,9 +4,26 @@ from __future__ import unicode_literals
 import mock
 import pytest
 
-from drafts_as_a_service import draft
+from drafts_as_a_service import sa
 
 
+@pytest.fixture
+def draft_session(request):
+    """
+    The session manager context manager as a fixture
+    """
+    session_manager = sa.Session()
+    def _commit_and_close():
+        try:
+            session_manager.session.commit()
+        finally:
+            session_manager.session.close()
+
+    request.addfinalizer(_commit_and_close)
+    return session_manager.session
+
+
+@pytest.mark.usefixtures('init_db')
 class TestPool(object):
     @pytest.mark.parametrize('packs, num_per_pack', [
         (1, 1),
@@ -21,7 +38,7 @@ class TestPool(object):
         assert all(len(pack) == num_per_pack for pack in dealt)
 
     def test_over_deal(self, pool, card_count):
-        with pytest.raises(draft.DraftError):
+        with pytest.raises(sa.DraftError):
             pool.deal_packs(card_count / 2 + 1, 2)
 
 
@@ -51,13 +68,13 @@ class TestDraftSetup(object):
 
     def test_distribute(self, the_draft, packs):
         assert the_draft.player_queues == {
-            '@player{}'.format(idx): dict(opened=[], unopened=[])
+            'player{}'.format(idx): dict(opened=[], unopened=[])
             for idx in xrange(8)
         }
         the_draft.distribute()
         # this works thanks to the mocking we've set out
         expected = {
-            '@player{}'.format(idx): {
+            'player{}'.format(idx): {
                 'opened': [],
                 'unopened': [packs[0 + idx],
                              packs[8 + idx],
@@ -72,7 +89,7 @@ class TestDraftSetup(object):
         assert all(len(queue['opened']) == 0 and len(queue['unopened']) == 3
                    for queue in the_draft.player_queues.itervalues())
 
-        [the_draft.open_pack(player) for player in the_draft.players]
+        [the_draft.open_pack(player) for player in the_draft.player_order]
 
         assert all(len(queue['opened']) == 1 and len(queue['unopened']) == 2
                    for queue in the_draft.player_queues.itervalues())
@@ -94,50 +111,57 @@ class TestDraftPicks(object):
         return [0, 7, 6, 5, 4, 3, 2, 1]
 
     @pytest.fixture
-    def started_draft(self, the_draft):
+    def started_draft(self, the_draft, draft_session):
+        draft_session.add(the_draft)
+        draft_session.commit()
         the_draft.distribute()
-        [the_draft.open_pack(player) for player in the_draft.players]
+        [the_draft.open_pack(player) for player in the_draft.player_order]
+        draft_session.commit()
         return the_draft
 
     @pytest.fixture
-    def player0_picks(self, the_draft, player0):
-        return the_draft.player_picks[player0]
+    def player0_picks(self, started_draft, player0):
+
+        return lambda: started_draft.player_picks[player0.handle]
 
     @pytest.fixture
-    def player0_queues(self, the_draft, player0):
-        return the_draft.player_queues[player0]
+    def player0_queues(self, started_draft, player0):
+        return lambda: started_draft.player_queues[player0.handle]
 
     @pytest.fixture
-    def some_pick(self, player0_queues, packs):
+    def some_pick(self, player0_queues, packs, started_draft):
         # we know this based on the mocking and the pack distribution
         # we asserted earlier
-        assert player0_queues['opened'][0] == packs[0]
-        assert player0_queues['opened'][0][0] == 'Card 0'
+        assert player0_queues()['opened'][0] == packs[0]
+        assert player0_queues()['opened'][0][0] == 'Card 0'
         return 'Card 0'
 
-    def test_make_pick_and_pass(self, started_draft, player0, player0_picks,
-                                player0_queues, some_pick, packs):
+    def test_make_pick_and_pass(self, started_draft, draft_session,
+                                player0, player0_picks, player0_queues,
+                                some_pick, packs):
 
-        assert len(player0_queues['opened']) == 1
-        assert len(player0_picks) == 0
+        assert len(player0_queues()['opened']) == 1
+        assert len(player0_picks()) == 0
 
         started_draft.make_pick(player0, some_pick)
         # we haven't passed yet
-        assert len(player0_queues['opened']) == 1
-        assert len(player0_picks) == 1
-        assert player0_picks[0] == {
+        assert len(player0_queues()['opened']) == 1
+        assert len(player0_picks()) == 1
+        assert player0_picks()[0] == {
             'drafted': some_pick,
             'passed': packs[0][1:]
         }
 
-        player1_on_deck = started_draft.player_queues['@player1']['opened']
+        player1_on_deck = started_draft.player_queues['player1']['opened']
         # we're passing to this person in pack 1
         assert len(player1_on_deck) == 1
         started_draft.pass_left(player0)
-        assert len(player0_queues['opened']) == 0
+        assert len(player0_queues()['opened']) == 0
         assert len(player1_on_deck) == 2
-        assert player1_on_deck[0] == packs[1]
-        assert player1_on_deck[1] == packs[0][1:] == player0_picks[0]['passed']
+        assert player1_on_deck()[0] == packs[1]
+        assert (player1_on_deck()[1] ==
+                packs[0][1:] ==
+                player0_picks()[0]['passed'])
 
     def test_wheel_left(self, started_draft, players, player0,
                         player0_queues, player0_picks, packs,
@@ -155,9 +179,9 @@ class TestDraftPicks(object):
         for seat in pass_right_pack_order:
             make_first_picks(players[seat])
 
-        assert len(player0_queues['opened']) == 8
-        next_pack = player0_queues['opened'][0]
-        opened_pack = player0_queues['opened'][-1]
+        assert len(player0_queues()['opened']) == 8
+        next_pack = player0_queues()['opened'][0]
+        opened_pack = player0_queues()['opened'][-1]
         # since everyone took the first pack we can assert this
         # and we are dealing out packs in a pattern, we can
         # guarantee these
@@ -167,11 +191,11 @@ class TestDraftPicks(object):
         make_first_picks(player0)
         pack_order = pass_left_pack_order + [0]
 
-        assert [p['drafted'] for p in player0_picks] == [
+        assert [p['drafted'] for p in player0_picks()] == [
             packs[p][idx] for idx, p in enumerate(pack_order)
         ]
 
-        assert [len(p['passed']) for p in player0_picks] == [
+        assert [len(p['passed']) for p in player0_picks()] == [
             15 - pack - 1 for pack in xrange(9)
         ]
 
@@ -191,9 +215,9 @@ class TestDraftPicks(object):
         for seat in pass_left_pack_order:
             make_first_picks(players[seat])
 
-        assert len(player0_queues['opened']) == 8
-        next_pack = player0_queues['opened'][0]
-        opened_pack = player0_queues['opened'][-1]
+        assert len(player0_queues()['opened']) == 8
+        next_pack = player0_queues()['opened'][0]
+        opened_pack = player0_queues()['opened'][-1]
         # since everyone took the first pack we can assert this
         # and we are dealing out packs in a pattern, we can
         # guarantee these
@@ -203,10 +227,10 @@ class TestDraftPicks(object):
         make_first_picks(player0)
         pack_order = pass_right_pack_order + [0]
 
-        assert [p['drafted'] for p in player0_picks] == [
+        assert [p['drafted'] for p in player0_picks()] == [
             packs[p][idx] for idx, p in enumerate(pack_order)
         ]
 
-        assert [len(p['passed']) for p in player0_picks] == [
+        assert [len(p['passed']) for p in player0_picks()] == [
             15 - pack - 1 for pack in xrange(9)
         ]

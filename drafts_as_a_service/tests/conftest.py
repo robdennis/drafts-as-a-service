@@ -3,7 +3,13 @@ import copy
 
 import pytest
 
-from drafts_as_a_service import draft
+from sideboard.tests import patch_session
+from drafts_as_a_service import sa
+
+
+@pytest.fixture
+def init_db(request):
+    patch_session(sa.Session, request)
 
 
 @pytest.fixture
@@ -12,8 +18,12 @@ def player_count():
 
 
 @pytest.fixture
-def players(player_count):
-    return ['@player{}'.format(c) for c in xrange(player_count)]
+def players(player_count, init_db):
+    """
+    Return a list of Player models that aren't yet attached to a session
+    """
+    return [sa.Player(handle='player{}'.format(c))
+            for c in xrange(player_count)]
 
 
 @pytest.fixture
@@ -22,13 +32,17 @@ def player0(players):
 
 
 @pytest.fixture
-def pod(players):
-    return draft.Pod(players)
+def pod(players, init_db):
+    """
+    Return a pod with players associated, that's not attached to a
+    session yet
+    """
+    return sa.Pod(players=players, num_players=len(players))
 
 
 @pytest.fixture
 def the_draft(pod, mocked_pool):
-    return draft.Draft(pod, mocked_pool)
+    return sa.Draft(pod=pod, pool=mocked_pool)
 
 
 @pytest.fixture
@@ -42,15 +56,15 @@ def cards(card_count):
 
 
 @pytest.fixture
-def pool(cards):
-    return draft.Pool(cards)
+def pool(cards, init_db):
+    return sa.Pool(type='set', contents=cards)
 
 
 @pytest.fixture
 def mocked_pool(pool, packs, monkeypatch):
     def return_expected_packs(*args, **kwargs):
         return copy.deepcopy(packs)
-    monkeypatch.setattr(pool, 'deal_packs', return_expected_packs)
+    monkeypatch.setattr(sa.Pool, 'deal_packs', return_expected_packs)
     return pool
 
 
