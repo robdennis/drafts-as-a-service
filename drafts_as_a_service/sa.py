@@ -164,8 +164,8 @@ class Draft(Base):
 
         assert packs
         for idx in xrange(3):
-            for player in self.players:
-                self.player_queues[player.handle]['unopened'].\
+            for player in self.player_order:
+                self.player_queues[player]['unopened'].\
                     append(packs.popleft())
         # http://docs.sqlalchemy.org/en/rel_0_8/orm/extensions/mutable.html
         # the mutable dict approach doesn't work for sub-dictionaries

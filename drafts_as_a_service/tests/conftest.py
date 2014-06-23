@@ -1,11 +1,16 @@
 # coding=utf-8
 import copy
-import mock
+import random
 
 import pytest
 
 from sideboard.tests import patch_session
 from drafts_as_a_service import sa
+
+
+@pytest.fixture(autouse=True)
+def no_shuffle(monkeypatch):
+    monkeypatch.setattr(random, 'shuffle', lambda x: None)
 
 
 @pytest.fixture
@@ -33,8 +38,7 @@ def player0(players):
 
 
 @pytest.fixture
-@mock.patch('random.shuffle')
-def the_draft(random_shuffle, init_db, players, mocked_pool, packs, monkeypatch):
+def the_draft(init_db, players, mocked_pool, packs):
     assert mocked_pool.deal_packs() == packs
 
     return sa.Draft(players=players, pool=mocked_pool)

@@ -153,7 +153,7 @@ class TestDraftPicks(object):
                 packs[0][1:] ==
                 player0_picks()[0]['passed'])
 
-    def test_wheel_left(self, started_draft, players, player0,
+    def test_wheel_left(self, started_draft, draft_session, players, player0,
                         player0_queues, player0_picks, packs,
                         pass_left_pack_order, pass_right_pack_order):
 
@@ -162,9 +162,11 @@ class TestDraftPicks(object):
             make the first pick for each pack the player has queued
             """
             name = player.handle
-            on_deck = started_draft.player_queues[name]['opened']
-            for _ in xrange(len(on_deck)):
+
+            for _ in xrange(len(started_draft.player_queues[name]['opened'])):
+                on_deck = started_draft.player_queues[name]['opened']
                 started_draft.make_pick_and_pass_left(name, on_deck[0][0])
+                draft_session.commit()
 
         # "reverse" order we all the packs are now waiting for you
         for seat in pass_right_pack_order:
@@ -191,17 +193,18 @@ class TestDraftPicks(object):
         ]
 
     def test_wheel_right(self, started_draft, players, player0,
-                        player0_queues, player0_picks, packs,
-                        pass_left_pack_order, pass_right_pack_order):
-
+                         draft_session,  player0_queues, player0_picks,
+                         packs, pass_left_pack_order, pass_right_pack_order):
         def make_first_picks(player):
             """
             make the first pick for each pack the player has queued
             """
             name = player.handle
-            on_deck = started_draft.player_queues[name]['opened']
-            for _ in xrange(len(on_deck)):
-                started_draft.make_pick_and_pass_right(name, on_deck[0][0])
+            for _ in xrange(len(started_draft.player_queues[name]['opened'])):
+                on_deck = started_draft.player_queues[name]['opened']
+                pick = on_deck[0][0]
+                started_draft.make_pick_and_pass_right(name, pick)
+                draft_session.commit()
 
         # "reverse" order we all the packs are now waiting for you
         for seat in pass_left_pack_order:
