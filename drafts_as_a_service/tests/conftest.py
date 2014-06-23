@@ -1,5 +1,6 @@
 # coding=utf-8
 import copy
+import mock
 
 import pytest
 
@@ -32,17 +33,27 @@ def player0(players):
 
 
 @pytest.fixture
-def pod(players, init_db):
-    """
-    Return a pod with players associated, that's not attached to a
-    session yet
-    """
-    return sa.Pod(players=players, num_players=len(players))
+@mock.patch('random.shuffle')
+def the_draft(random_shuffle, init_db, players, mocked_pool, packs, monkeypatch):
+    assert mocked_pool.deal_packs() == packs
+
+    return sa.Draft(players=players, pool=mocked_pool)
 
 
 @pytest.fixture
-def the_draft(pod, mocked_pool):
-    return sa.Draft(pod=pod, pool=mocked_pool)
+def draft_session(request):
+    """
+    The session manager context manager as a fixture
+    """
+    session_manager = sa.Session()
+    def _commit_and_close():
+        try:
+            session_manager.session.commit()
+        finally:
+            session_manager.session.close()
+
+    request.addfinalizer(_commit_and_close)
+    return session_manager.session
 
 
 @pytest.fixture

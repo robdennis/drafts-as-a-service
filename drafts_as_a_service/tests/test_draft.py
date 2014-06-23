@@ -7,22 +7,6 @@ import pytest
 from drafts_as_a_service import sa
 
 
-@pytest.fixture
-def draft_session(request):
-    """
-    The session manager context manager as a fixture
-    """
-    session_manager = sa.Session()
-    def _commit_and_close():
-        try:
-            session_manager.session.commit()
-        finally:
-            session_manager.session.close()
-
-    request.addfinalizer(_commit_and_close)
-    return session_manager.session
-
-
 @pytest.mark.usefixtures('init_db')
 class TestPool(object):
     @pytest.mark.parametrize('packs, num_per_pack', [
@@ -42,22 +26,24 @@ class TestPool(object):
             pool.deal_packs(card_count / 2 + 1, 2)
 
 
-class TestPod(object):
+class TestSeating(object):
     @mock.patch('random.shuffle')
-    def test_default_random_seating(self, mock_shuffle, pod):
+    def test_default_random_seating(self, mock_shuffle, the_draft):
         assert not mock_shuffle.called
-        pod.seat_players()
+        the_draft.seat_players()
+        the_draft.distribute()
         assert mock_shuffle.called
 
     @mock.patch('random.shuffle')
-    def test_non_random_seating(self, mock_shuffle, pod):
+    def test_non_random_seating(self, mock_shuffle, the_draft):
         assert not mock_shuffle.called
-        pod.seat_players(randomize=False)
+        the_draft.seat_players(randomize=False)
+        the_draft.distribute()
         assert not mock_shuffle.called
 
-    def test_players_start_with_with_queues(self, pod):
+    def test_players_start_with_with_queues(self, the_draft):
         assert all(q == dict(opened=[], unopened=[])
-                   for p,q in pod.player_queues.iteritems())
+                   for p,q in the_draft.player_queues.iteritems())
 
 
 class TestDraftSetup(object):
@@ -130,15 +116,19 @@ class TestDraftPicks(object):
 
     @pytest.fixture
     def some_pick(self, player0_queues, packs, started_draft):
+        assert all(started_draft.player_queues[name]['opened']
+                   for name in started_draft.player_order)
+        assert started_draft.player_order == [
+            'player{}'.format(n) for n in xrange(8)
+        ]
         # we know this based on the mocking and the pack distribution
         # we asserted earlier
         assert player0_queues()['opened'][0] == packs[0]
         assert player0_queues()['opened'][0][0] == 'Card 0'
         return 'Card 0'
 
-    def test_make_pick_and_pass(self, started_draft, draft_session,
-                                player0, player0_picks, player0_queues,
-                                some_pick, packs):
+    def test_make_pick_and_pass(self, started_draft, player0, player0_picks,
+                                player0_queues, some_pick, packs):
 
         assert len(player0_queues()['opened']) == 1
         assert len(player0_picks()) == 0
@@ -158,8 +148,8 @@ class TestDraftPicks(object):
         started_draft.pass_left(player0)
         assert len(player0_queues()['opened']) == 0
         assert len(player1_on_deck) == 2
-        assert player1_on_deck()[0] == packs[1]
-        assert (player1_on_deck()[1] ==
+        assert player1_on_deck[0] == packs[1]
+        assert (player1_on_deck[1] ==
                 packs[0][1:] ==
                 player0_picks()[0]['passed'])
 
@@ -171,9 +161,10 @@ class TestDraftPicks(object):
             """
             make the first pick for each pack the player has queued
             """
-            on_deck = started_draft.player_queues[player]['opened']
+            name = player.handle
+            on_deck = started_draft.player_queues[name]['opened']
             for _ in xrange(len(on_deck)):
-                started_draft.make_pick_and_pass_left(player, on_deck[0][0])
+                started_draft.make_pick_and_pass_left(name, on_deck[0][0])
 
         # "reverse" order we all the packs are now waiting for you
         for seat in pass_right_pack_order:
@@ -207,9 +198,10 @@ class TestDraftPicks(object):
             """
             make the first pick for each pack the player has queued
             """
-            on_deck = started_draft.player_queues[player]['opened']
+            name = player.handle
+            on_deck = started_draft.player_queues[name]['opened']
             for _ in xrange(len(on_deck)):
-                started_draft.make_pick_and_pass_right(player, on_deck[0][0])
+                started_draft.make_pick_and_pass_right(name, on_deck[0][0])
 
         # "reverse" order we all the packs are now waiting for you
         for seat in pass_left_pack_order:
