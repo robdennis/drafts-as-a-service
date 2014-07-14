@@ -96,6 +96,25 @@ class Player(Base):
     handle = Column(String(), nullable=False, unique=True)
     drafts = relationship('Draft', secondary='player_to_draft',
                           backref='players')
+    @staticmethod
+    def get_or_create(session, handle):
+        """
+        Given a handle, either get the Player associated or create a new one.
+        """
+        instance = session.query(Player).filter_by(handle=handle).first()
+        if instance:
+            return instance
+        else:
+            instance = Player(handle=handle)
+            session.add(instance)
+            return instance
+
+    @staticmethod
+    def bulk_get_or_create(session, handles):
+        """
+        Call get_or_create for each one of the provided handles.
+        """
+        return [Player.get_or_create(session, handle) for handle in handles]
 
 
 class Pool(Base):
@@ -164,8 +183,8 @@ class Draft(Base):
 
         assert packs
         for idx in xrange(3):
-            for player in self.players:
-                self.player_queues[player.handle]['unopened'].\
+            for player in self.player_order:
+                self.player_queues[player]['unopened'].\
                     append(packs.popleft())
         # http://docs.sqlalchemy.org/en/rel_0_8/orm/extensions/mutable.html
         # the mutable dict approach doesn't work for sub-dictionaries
