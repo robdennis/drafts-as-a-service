@@ -8,14 +8,26 @@ import mock
 import pytest
 
 from drafts_as_a_service import config
-from drafts_as_a_service.twitter import DraftBot
+from drafts_as_a_service.twitter import DraftBot, Message
 
 __here__ = os.path.dirname(os.path.abspath(__file__))
 
+
 @pytest.fixture(scope='session')
-def start_message():
+def raw_start_message():
+    """
+    a "start message" tweet
+    """
     with open(join(__here__, 'start_drafting.json')) as start:
         return json.load(start)
+
+
+@pytest.fixture(scope='session')
+def start_message(raw_start_message):
+    """
+    a "start message" tweet that's been processed
+    """
+    return Message(raw_start_message)
 
 
 @pytest.fixture

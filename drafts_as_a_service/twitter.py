@@ -1,6 +1,13 @@
 # coding=utf-8
 from __future__ import unicode_literals
+import json
+import os
+
 import twython
+from drafts_as_a_service import sa
+
+
+__here__ = os.path.dirname(__file__)
 
 
 class DraftBot(object):
@@ -24,9 +31,20 @@ class DraftBot(object):
             message.has_hashtag(self.start_draft_hashtag)):
             self._process_start_message(message)
 
+    def get_pool(self, message):
+        #TODO: different kinds of pools
+        #TODO: sometimes we can fetch an existing pool
+        contents = json.load(open(os.path.join(__here__, 'cuesbey.json')))
+        return sa.Pool(contents=contents, type='set')
+
+
     def _process_start_message(self, message):
-        pass
-        # pod = draft.Pod(message.involved - {self.screen_name})
+        with sa.Session() as session:
+            players = sa.Player.bulk_get_or_create(
+                session, message.involved - {self.screen_name})
+            pool = self.get_pool(message)
+            draft = sa.Draft(players=players, pool=pool)
+            session.add_all([pool, draft])
 
 
 class Message(dict):

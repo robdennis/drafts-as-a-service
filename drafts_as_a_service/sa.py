@@ -96,6 +96,25 @@ class Player(Base):
     handle = Column(String(), nullable=False, unique=True)
     drafts = relationship('Draft', secondary='player_to_draft',
                           backref='players')
+    @staticmethod
+    def get_or_create(session, handle):
+        """
+        Given a handle, either get the Player associated or create a new one.
+        """
+        instance = session.query(Player).filter_by(handle=handle).first()
+        if instance:
+            return instance
+        else:
+            instance = Player(handle=handle)
+            session.add(instance)
+            return instance
+
+    @staticmethod
+    def bulk_get_or_create(session, handles):
+        """
+        Call get_or_create for each one of the provided handles.
+        """
+        return [Player.get_or_create(session, handle) for handle in handles]
 
 
 class Pool(Base):
